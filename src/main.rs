@@ -1,61 +1,50 @@
-// Copyright 2017 rstools Developers
+// Copyright 2017-2018 rstools Developers
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-extern crate clap;
+extern crate structopt;
+
+#[macro_use]
+extern crate structopt_derive;
 
 use std::fs::File;
-use std::{io, process};
-use std::io::{BufReader, BufRead};
-use std::collections::{VecDeque, HashSet};
+use std::process;
+use std::io::{BufRead, BufReader};
+use std::collections::{HashSet, VecDeque};
 use std::error::Error;
-use clap::{App, Arg, AppSettings, SubCommand, ArgMatches};
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
-const AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
-const NAME: &str = env!("CARGO_PKG_NAME");
-const CMD_CMP: &str = "compare";
-const CMD_UNQ: &str = "uniques";
+use structopt::StructOpt;
 
-fn cli<'a>() -> ArgMatches<'a> {
-    App::new(NAME)
-        .setting(AppSettings::SubcommandRequiredElseHelp)
-        .version(VERSION)
-        .author(AUTHORS)
-        .about("Some misc tools to help with emu dev")
-        .subcommand(SubCommand::with_name(CMD_CMP)
-            .aliases(&["cmp", "cp"])
-            .version("1.0.2")
-            .author(AUTHORS)
-            .about("Compares two files and prints the first line they are different (+context lines before it) on along with the line number")
-            .args(&[
-                Arg::with_name("file_1")
-                    .help("The first file")
-                    .required(true),
-                Arg::with_name("file_2")
-                    .help("the second file")
-                    .required(true),
-                Arg::with_name("context")
-                    .help("the number of lines to show before the diff")
-                    .short("c")
-                    .long("context")
-                    .takes_value(true)]))
-        .subcommand(SubCommand::with_name(CMD_UNQ)
-            .version("0.1.1")
-            .author(AUTHORS)
-            .about("Gets all the unique lines in a file")
-            .arg(Arg::with_name("file")
-                .help("The file to check")
-                .required(true)))
-        .get_matches()
+#[derive(StructOpt)]
+#[structopt(about = "Some misc tools to help with emu dev")]
+enum Cli {
+    #[structopt(name = "compare",
+    aliases_raw = "&[\"cmp, cp\"]",
+    version = "1.1.0",
+    about = "Compares two files and prints the first line they are different (+context lines before it) on along with the line number")]
+    Compare {
+        #[structopt(help = "The first file.")]
+        file_1: String,
+        #[structopt(help = "The second file.")]
+        file_2: String,
+        #[structopt(short = "c", long = "context", help = "The number of lines to show before the diff.", default_value = "5")]
+        context: usize,
+    },
+
+    #[structopt(name = "uniques", version = "0.2.0",
+    about = "Gets all the unique lines in a file")]
+    Uniques {
+        #[structopt(help = "The file to check")]
+        file: String
+    }
 }
 
-fn uniques(path: &String) -> Result<(), Box<Error>> {
+fn uniques(path: &str) -> Result<(), Box<Error>> {
     let mut uniques = HashSet::new();
-    for line in BufReader::new(File::open(path)?).lines() {
+    for line in BufReader::new(File::open(&path)?).lines() {
         let line = line?;
         if !uniques.contains(&line) {
             println!("{}", line);
@@ -66,7 +55,7 @@ fn uniques(path: &String) -> Result<(), Box<Error>> {
     Ok(())
 }
 
-fn compare(file1: &String, file2: &String, context_len: usize) -> Result<(), Box<Error>>{
+fn compare(file1: &str, file2: &str, context_len: usize) -> Result<(), Box<Error>> {
     let mut buf = VecDeque::with_capacity(context_len);
     let f1 = File::open(file1)?;
     let f2 = File::open(file2)?;
@@ -75,7 +64,7 @@ fn compare(file1: &String, file2: &String, context_len: usize) -> Result<(), Box
         let s1 = s1?;
         let s2 = s2?;
         let sout = format!("{} {}", &s1, &s2);
-        if &s1 != &s2 {
+        if s1 != s2 {
             println!("difference found on line {}", i);
             for s in buf {
                 println!("{}", s);
@@ -99,24 +88,19 @@ fn compare(file1: &String, file2: &String, context_len: usize) -> Result<(), Box
     Ok(())
 }
 
-fn run_command<'a> (matches: ArgMatches<'a>) -> Result<(), Box<Error>> {
-    match matches.subcommand() {
-        (CMD_CMP, Some(cmp_matches)) => {
-            let context = match cmp_matches.value_of("context") {
-                Some(num) => num.to_string().parse()?,
-                None => 5
-            };
-
-            compare(&cmp_matches.value_of("file_1").unwrap().to_string(), &cmp_matches.value_of("file_2").unwrap().to_string(), context)
-        }
-
-        (CMD_UNQ, Some(uniques_matches)) => uniques(&uniques_matches.value_of("file").unwrap().to_string()),
-        _ => unreachable!()
+fn run_command(cli: Cli) -> Result<(), Box<Error>> {
+    match cli {
+        Cli::Compare {
+            file_1,
+            file_2,
+            context,
+        } => compare(&file_1, &file_2, context),
+        Cli::Uniques { file } => uniques(&file),
     }
 }
 
 fn main() {
-    if let Err(e) = run_command(cli()) {
+    if let Err(e) = run_command(Cli::from_args()) {
         eprintln!("{}", e);
         process::exit(1)
     }
