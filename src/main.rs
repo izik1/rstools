@@ -87,9 +87,8 @@ fn uniques<T: BufRead>(reader: &mut T) -> Result<()> {
     let mut stdout = stdout.lock();
 
     while let Ok(Some(line)) = reader.get_line() {
-        if !uniques.contains(line) {
+        if uniques.insert(line.to_string()) {
             writeln!(stdout, "{}", line)?;
-            uniques.insert(line.to_string());
         }
     }
 
